@@ -1,0 +1,1 @@
+// trae cotizaciones, cache, normaliza
