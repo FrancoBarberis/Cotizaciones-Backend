@@ -9,6 +9,7 @@ import cors from "cors"; //para definir quienes puede consumir mi servidor
 import {Server as SocketIOServer} from "socket.io"; //para crear servidor de sockets}
 import ratesRouter from "./routes/rates.routes";
 import {getLatestRates, initRates, startPolling} from "./rates.service"; 
+import { requireEnv } from "./helpers/config";
 
 //2) Creo la app de express 
 
@@ -22,7 +23,7 @@ app.use("/api/rates", ratesRouter); //todas las rutas api/rates se completan con
 const servidorHTTP = http.createServer(app); //creo el server con el modulo http nativo de Node, y le paso la app de express, que tiene las rutas
 const io = new SocketIOServer (servidorHTTP, { cors: {origin: process.env.CORS_ORIGIN} })
 
-//escucha cuando un cliente se conecta y le envía la data inicial
+//Escucha cuando un cliente se conecta y le envía la data inicial
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
 
@@ -30,11 +31,10 @@ io.on('connection', (socket) => {
   socket.emit('rates:update', getLatestRates());
 });
 
+initRates(); // inicializa el cache con valores por defecto
+startPolling(io); // comienza a hacer fetch cada X segundos y emitir a todos los clientes
 
-// initRates(); // inicializa el cache con valores por defecto
-// startPolling(io); // comienza a hacer fetch cada X segundos y emitir a todos los clientes
-
-const PORT = process.env.PORT || 3000;
+const PORT = requireEnv("PORT");
 servidorHTTP.listen(PORT, () => {
     console.log(`Servidor listo en http/localhost:${PORT}`);
 });
