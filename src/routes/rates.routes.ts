@@ -1,3 +1,6 @@
 // endpoints REST /api/rates/*
 
-export const ratesRouter: string = "IMPLEMENTAR";
+import { Router } from "express";
+
+//TODO: implementar router
+export const ratesRouter = Router();

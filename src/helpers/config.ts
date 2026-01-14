@@ -1,15 +1,17 @@
-//src/helpers/config.js
+//src/helpers/config.ts
 
-export function requireEnv(name) {
+// =======================
+// HELPERS
+// =======================
+
+export function requireEnv(name:string):string {
   const v = process.env[name];
   if (v == null || v === "") throw new Error(`Falta la variable de entorno: ${name}`);
   return v;
 }
 
-
 //Parseo a number con default
-
-export function parseNumberEnv (name, fallback) {
+export function parseNumberEnv (name:string, fallback:number):number {
     const raw = process.env[name];
     if (raw == null || raw == "") return fallback;
     const n = Number(raw);
@@ -19,17 +21,36 @@ export function parseNumberEnv (name, fallback) {
     return n;
 }
 
-export const NODE_ENV = process.env.NODE_ENV ?? "development";
-export const IS_PROD = NODE_ENV === "production";
+// ===============================
+// Entorno
+// ===============================
 
-export const CORS_ORIGIN = IS_PROD ? requireEnv("CORS_ORIGIN") : (process.env.CORS_ORIGIN ?? "*");
+export const NODE_ENV:string = 
+    process.env.NODE_ENV ?? "development";
+export const IS_PROD:boolean =  
+    (NODE_ENV === "production");
+
+// ===============================
+// Server
+// ===============================
+
+export const CORS_ORIGIN:string = IS_PROD 
+    ? requireEnv("CORS_ORIGIN") 
+    : (process.env.CORS_ORIGIN ?? "*");
 
 // Puerto numérico validado
-export const PORT = parseNumberEnv("PORT", 3000);
+export const PORT:number = 
+    parseNumberEnv("PORT", 3000);
 
 // ExchangeRate-API
-export const EXR_API_KEY = requireEnv("EXR_API_KEY");
-export const BASE_CURRENCY = requireEnv("BASE_CURRENCY");
+export const EXR_API_KEY:string = 
+    requireEnv("EXR_API_KEY");
+export const BASE_CURRENCY:string = 
+    requireEnv("BASE_CURRENCY");
 
-//Polling
-export const POLL_INTERVAL_MS = parseNumberEnv("POLL_INTERVAL_MS",60000)
+// ===============================
+// Polling
+// ===============================
+
+export const POLL_INTERVAL_MS:number = 
+    parseNumberEnv("POLL_INTERVAL_MS",60000);
