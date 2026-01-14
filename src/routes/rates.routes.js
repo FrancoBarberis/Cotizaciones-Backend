@@ -1,1 +1,0 @@
-// endpoints REST /api/rates/*

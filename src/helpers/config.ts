@@ -1,13 +1,11 @@
 //src/helpers/config.js
 
-export function requireEnv (name) {
-    const v = process.env[name];
-    if (!v){
-        console.error(`Falta la variable de entorno: ${name}`);
-        process.exit(1); //Termina el proceso e indica que hubo un error
-    }
-    return v;
+export function requireEnv(name) {
+  const v = process.env[name];
+  if (v == null || v === "") throw new Error(`Falta la variable de entorno: ${name}`);
+  return v;
 }
+
 
 //Parseo a number con default
 
@@ -28,3 +26,10 @@ export const CORS_ORIGIN = IS_PROD ? requireEnv("CORS_ORIGIN") : (process.env.CO
 
 // Puerto numérico validado
 export const PORT = parseNumberEnv("PORT", 3000);
+
+// ExchangeRate-API
+export const EXR_API_KEY = requireEnv("EXR_API_KEY");
+export const BASE_CURRENCY = requireEnv("BASE_CURRENCY");
+
+//Polling
+export const POLL_INTERVAL_MS = parseNumberEnv("POLL_INTERVAL_MS",60000)
