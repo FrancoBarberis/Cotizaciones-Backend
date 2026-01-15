@@ -97,4 +97,46 @@ const getRateByCurrency = (currency: string): number | null => {
     return cachedRates.rates[currency]??null;
 };
 
-export { getLatestRates, initRates, startPolling, getRateByCurrency };
+
+/**
+ * Returns the exchange rate between two currencies
+ * derived from the cached base currency.
+ *
+ * @param from Currency to convert from (e.g. "EUR")
+ * @param to   Currency to convert to   (e.g. "ARS")
+ * @returns number | null
+ */
+const getRateBetweenCurrencies = (
+  from: string,
+  to: string
+): number | null => {
+  if (!cachedRates) return null;
+
+  const { base_code, rates } = cachedRates;
+
+  // Same currency
+  if (from === to) return 1;
+
+  // From base → other
+  if (from === base_code) {
+    return rates[to] ?? null;
+  }
+
+  // Other → base
+  if (to === base_code) {
+    const fromRate = rates[from];
+    return fromRate ? 1 / fromRate : null;
+  }
+
+  // Cross conversion
+  const fromRate = rates[from];
+  const toRate = rates[to];
+
+  if (fromRate === undefined || toRate === undefined) {
+    return null;
+  }
+
+  return toRate / fromRate;
+};
+
+export { getLatestRates, initRates, startPolling, getRateByCurrency, getRateBetweenCurrencies };
