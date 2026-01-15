@@ -54,7 +54,6 @@ httpServer.listen(PORT, () => {
 });
 
 // Health check endpoint (used by deployment platforms)
-
 app.get("/healthz", (_req: Request, res: Response) =>
   res.json({ ok: true })
 );

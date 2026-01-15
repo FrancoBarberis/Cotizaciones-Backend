@@ -65,7 +65,6 @@ const initRates = async (io: SocketIOServer): Promise<void> => {
     io.emit("rates:init", rates);
 };
 
-
 /**
  * Starts the periodic polling cycle to refresh exchange rates.
  *
@@ -96,7 +95,6 @@ const getRateByCurrency = (currency: string): number | null => {
     if (!cachedRates) return null;
     return cachedRates.rates[currency]??null;
 };
-
 
 /**
  * Returns the exchange rate between two currencies
