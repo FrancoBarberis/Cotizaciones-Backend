@@ -1,7 +1,5 @@
 //src/index.ts
-
 // arranque server HTTP + Socket.IO
-
 //1) Importo las dependencias
 
 import "dotenv/config"; //carga las variables de entorno desde el archivo .env
@@ -19,9 +17,6 @@ const app = express();
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 app.use("/api/rates", ratesRouter); //todas las rutas api/rates se completan con las rutas que defina en ratesRouter
-
-
-
 
 //3) Creo el servidor HTTP y configuro WebSockets
 
