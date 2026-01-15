@@ -45,9 +45,21 @@ const getLatestRates = async (): Promise<ExchangeRateResponse> => {
     return freshRates;
 }
 
-//Es para el estado inicial de los rates
-const initRates = (io: Socket): any => {
-    return;
+const initRates = async (io: Socket): Promise<void> => {
+
+    /**
+     * Emite el estado inicial de las cotizaciones al iniciar el servidor.
+     *
+     * - Obtiene el snapshot actual de rates usando el service
+     * - Lo emite a todos los clientes conectados vía Socket.IO
+     * - Se ejecuta una sola vez durante el startup del server
+     *
+     * @param {Socket} io Instancia del servidor Socket.IO
+     * @returns {Promise<void>} No devuelve valor
+     */
+
+    const rates = await getLatestRates();
+    io.emit("rates:init", rates);
 }
 
 //Ciclo de fetching, normalización de caché y emisión a clientes
