@@ -2,7 +2,7 @@
 // src/rates.service.ts
 // Fetches exchange rates, caches them, and normalizes data
 
-import { Socket } from "socket.io";
+import { Server as SocketIOServer } from "socket.io";
 import { ExchangeRateResponse } from "./helpers/types/exchange-rate.types";
 import { POLL_INTERVAL_MS } from "./helpers/config";
 
@@ -14,16 +14,16 @@ let cachedRates: ExchangeRateResponse | null = null;
 let cacheExpiresAt: number = 0;
 
 const isCacheValid = (): boolean => {
-  return cachedRates !== null && Date.now() < cacheExpiresAt;
+    return cachedRates !== null && Date.now() < cacheExpiresAt;
 };
 
 const updateCache = (rates: ExchangeRateResponse): void => {
-  cachedRates = rates;
-  cacheExpiresAt = rates.time_next_update_unix * 1000;
+    cachedRates = rates;
+    cacheExpiresAt = rates.time_next_update_unix * 1000;
 };
 
 const fetchRatesFromProvider = async (): Promise<ExchangeRateResponse> => {
-  throw new Error("fetchRatesFromProvider not implemented");
+    throw new Error("fetchRatesFromProvider not implemented");
 };
 
 // =================
@@ -40,14 +40,14 @@ const fetchRatesFromProvider = async (): Promise<ExchangeRateResponse> => {
  * @returns {Promise<ExchangeRateResponse>} Current exchange rates snapshot
  */
 const getLatestRates = async (): Promise<ExchangeRateResponse> => {
-  if (isCacheValid()) {
-    return cachedRates!;
-  }
+    if (isCacheValid()) {
+        return cachedRates!;
+    }
 
-  const freshRates: ExchangeRateResponse = await fetchRatesFromProvider();
-  updateCache(freshRates);
+    const freshRates: ExchangeRateResponse = await fetchRatesFromProvider();
+    updateCache(freshRates);
 
-  return freshRates;
+    return freshRates;
 };
 
 /**
@@ -60,18 +60,41 @@ const getLatestRates = async (): Promise<ExchangeRateResponse> => {
  * @param {Socket} io Socket.IO server instance
  * @returns {Promise<void>} Does not return any value
  */
-const initRates = async (io: Socket): Promise<void> => {
-  const rates = await getLatestRates();
-  io.emit("rates:init", rates);
+const initRates = async (io: SocketIOServer): Promise<void> => {
+    const rates = await getLatestRates();
+    io.emit("rates:init", rates);
 };
 
-// Fetching cycle, cache normalization, and client emission
-const startPolling = (): any => {
-  return;
+
+/**
+ * Starts the periodic polling cycle to refresh exchange rates.
+ *
+ * - Fetches rates from the external provider at a fixed interval
+ * - Updates the internal cache with the new snapshot
+ *
+ * @returns {void}
+ */
+
+const startPolling = (): void => {
+    setInterval(async () => {
+        try {
+            const freshRates = await fetchRatesFromProvider();
+            updateCache(freshRates);
+        } catch (error) {
+            console.error("[Rates Polling] Failed to refresh rates", error);
+        }
+    }, POLL_INTERVAL_MS)
 };
 
-const getRateByCurrency = (): any => {
-  return;
+/**
+ * Returns the current exchange rate for a specific currency
+ * 
+ * @param   {string} currency Currency code (e.g. "USD", "EUR")
+ * @returns {number | null} Exchante rate value or null if not available
+ */
+const getRateByCurrency = (currency: string): number | null => {
+    if (!cachedRates) return null;
+    return cachedRates.rates[currency]??null;
 };
 
 export { getLatestRates, initRates, startPolling, getRateByCurrency };
