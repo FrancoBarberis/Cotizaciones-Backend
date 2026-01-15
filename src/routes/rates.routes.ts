@@ -1,4 +1,3 @@
-
 // src/routes/rates.routes.ts
 // Exposes API endpoints and calls the functions from rates.service
 
@@ -7,7 +6,7 @@ import { getRateBetweenCurrencies, getLatestRates } from "../rates.service";
 
 export const ratesRouter = Router();
 
-const isValidCurrency = (code: string) => /^[A-Za-z]{3}$/.test(code);
+const isValidCurrency = (code: string) => /^[A-Z]{3}$/.test(code);
 
 // GET /api/rates
 ratesRouter.get("/", async (_req, res) => {
@@ -21,48 +20,57 @@ ratesRouter.get("/", async (_req, res) => {
 });
 
 // GET /api/rates/convert
-//e.g. GET /api/rates/convert?from=USD&to=EUR&amount=10
-
+// e.g. GET /api/rates/convert?from=USD&to=EUR&amount=10
 ratesRouter.get("/convert", async (req, res) => {
   try {
-    // 1) Leer y normalizar query params
+    // 1) Read and normalize query params
     const from = String(req.query.from ?? "").toUpperCase();
     const to = String(req.query.to ?? "").toUpperCase();
     const amountStr = String(req.query.amount ?? "1").trim();
 
-    // 2) Validaciones básicas
+    // 2) Basic validations
     if (!isValidCurrency(from) || !isValidCurrency(to)) {
       return res
         .status(400)
-        .json({ error: "Parámetros inválidos: 'from' y 'to' deben ser códigos ISO 4217 (p. ej., USD, EUR, ARS)" });
+        .json({ error: "Invalid 'from' or 'to' (use ISO 4217: e.g., USD, EUR, ARS)" });
     }
 
     const amount = Number(amountStr);
     if (!Number.isFinite(amount) || amount < 0) {
       return res
         .status(400)
-        .json({ error: "Parámetro inválido: 'amount' debe ser un número no negativo" });
+        .json({ error: "Invalid 'amount' (must be a non-negative number)" });
     }
 
-    // 3) Snapshot actual (puede lanzar si no hay proveedor listo)
+    // 3) Current snapshot (may throw if provider not ready)
     const snapshot = await getLatestRates();
-    // (Si tu service devolviera null en algún caso)
+
+    // Ensure snapshot exists before using it below
     if (!snapshot) {
       return res.status(503).json({ error: "Rates not ready" });
     }
 
-    // 4) Tasa entre monedas (maneja base y cruce)
+    // Short-circuit: same currency
+    if (from === to) {
+      return res.status(200).json({
+        from, to, amount, rate: 1, converted: amount,
+        base: snapshot.base_code,
+        asOf: snapshot.time_last_update_unix * 1000,
+      });
+    }
+
+    // 4) Cross/base-aware rate
     const rate = getRateBetweenCurrencies(from, to);
     if (rate == null) {
       return res
         .status(404)
-        .json({ error: `No hay tasa disponible para el par ${from}/${to}` });
+        .json({ error: `Rate not available for pair ${from}/${to}` });
     }
 
-    // 5) Cálculo
+    // 5) Compute
     const converted = amount * rate;
 
-    // 6) Respuesta con metadatos útiles
+    // 6) Response with useful metadata
     return res.status(200).json({
       from,
       to,
@@ -74,8 +82,7 @@ ratesRouter.get("/convert", async (req, res) => {
     });
   } catch (err) {
     console.error("GET /api/rates/convert error:", err);
-    // Mientras no tipifiquemos errores en el service, 503 es razonable para “no listo”
+    // While provider/service errors are not typed, 503 is reasonable for "not ready"
     return res.status(503).json({ error: "Rates not ready" });
   }
 });
-

@@ -1,10 +1,9 @@
-
 // src/rates.service.ts
 // Fetches exchange rates, caches them, and normalizes data
 
 import { Server as SocketIOServer } from "socket.io";
-import { ExchangeRateResponse } from "./helpers/types/exchange-rate.types";
-import { POLL_INTERVAL_MS } from "./helpers/config";
+import { ExchangeRateResponse, ProviderV6Response, ProviderV6ResponseSuccess } from "./helpers/types/exchange-rate.types";
+import { POLL_INTERVAL_MS, EXR_API_KEY, BASE_CURRENCY } from "./helpers/config";
 
 // =================
 // CACHE UTILS
@@ -23,8 +22,54 @@ const updateCache = (rates: ExchangeRateResponse): void => {
 };
 
 const fetchRatesFromProvider = async (): Promise<ExchangeRateResponse> => {
-    throw new Error("fetchRatesFromProvider not implemented");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const resp = await fetch(
+      `https://v6.exchangerate-api.com/v6/${EXR_API_KEY}/latest/${BASE_CURRENCY}`,
+      { signal: controller.signal } 
+    );
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`Provider HTTP ${resp.status}: ${text || resp.statusText}`);
+    }
+
+    const json = (await resp.json()) as ProviderV6Response;
+
+    if (json.result !== "success") {
+      const errType = (json as any)?.["error-type"] ?? "Unknown provider error";
+      throw new Error(`Provider result not success: ${errType}`);
+    }
+
+    const ok = json as ProviderV6ResponseSuccess;
+
+    const normalized: ExchangeRateResponse = {
+      base_code: ok.base_code,
+      documentation: ok.documentation,
+      provider: ok.provider ?? "exchangerate-api",
+      rates: ok.conversion_rates,
+      result: ok.result,
+      terms_of_use: ok.terms_of_use,
+      time_eol_unix: ok.time_eol_unix ?? 0,
+      time_last_update_unix: ok.time_last_update_unix,
+      time_last_update_utc: ok.time_last_update_utc,
+      time_next_update_unix: ok.time_next_update_unix,
+      time_next_update_utc: ok.time_next_update_utc,
+    };
+
+    return normalized;
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      throw new Error("Provider request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout); // ← importante
+  }
 };
+
 
 // =================
 // SERVICES
@@ -93,7 +138,7 @@ const startPolling = (): void => {
  */
 const getRateByCurrency = (currency: string): number | null => {
     if (!cachedRates) return null;
-    return cachedRates.rates[currency]??null;
+    return cachedRates.rates[currency] ?? null;
 };
 
 /**
@@ -105,36 +150,36 @@ const getRateByCurrency = (currency: string): number | null => {
  * @returns number | null
  */
 const getRateBetweenCurrencies = (
-  from: string,
-  to: string
+    from: string,
+    to: string
 ): number | null => {
-  if (!cachedRates) return null;
+    if (!cachedRates) return null;
 
-  const { base_code, rates } = cachedRates;
+    const { base_code, rates } = cachedRates;
 
-  // Same currency
-  if (from === to) return 1;
+    // Same currency
+    if (from === to) return 1;
 
-  // From base → other
-  if (from === base_code) {
-    return rates[to] ?? null;
-  }
+    // From base → other
+    if (from === base_code) {
+        return rates[to] ?? null;
+    }
 
-  // Other → base
-  if (to === base_code) {
+    // Other → base
+    if (to === base_code) {
+        const fromRate = rates[from];
+        return fromRate ? 1 / fromRate : null;
+    }
+
+    // Cross conversion
     const fromRate = rates[from];
-    return fromRate ? 1 / fromRate : null;
-  }
+    const toRate = rates[to];
 
-  // Cross conversion
-  const fromRate = rates[from];
-  const toRate = rates[to];
+    if (fromRate === undefined || toRate === undefined) {
+        return null;
+    }
 
-  if (fromRate === undefined || toRate === undefined) {
-    return null;
-  }
-
-  return toRate / fromRate;
+    return toRate / fromRate;
 };
 
 export { getLatestRates, initRates, startPolling, getRateByCurrency, getRateBetweenCurrencies };
