@@ -149,37 +149,55 @@ const getRateByCurrency = (currency: string): number | null => {
  * @param to   Currency to convert to   (e.g. "ARS")
  * @returns number | null
  */
+
 const getRateBetweenCurrencies = (
-    from: string,
-    to: string
+  from: string,
+  to: string
 ): number | null => {
-    if (!cachedRates) return null;
+  if (!cachedRates) return null;
 
-    const { base_code, rates } = cachedRates;
+  const { base_code, rates } = cachedRates;
 
-    // Same currency
-    if (from === to) return 1;
+  // Misma moneda
+  if (from === to) {
+    const rate = 1;
+    const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 6 });
+    console.log(`1 ${from} = ${fmt.format(rate)} ${to}`);
+    return rate;
+  }
 
-    // From base → other
-    if (from === base_code) {
-        return rates[to] ?? null;
+  // De base → otra
+  if (from === base_code) {
+    const rate = rates[to] ?? null;
+    if (rate != null) {
+      const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 6 });
+      console.log(`1 ${from} = ${fmt.format(rate)} ${to}`);
     }
+    return rate;
+  }
 
-    // Other → base
-    if (to === base_code) {
-        const fromRate = rates[from];
-        return fromRate ? 1 / fromRate : null;
-    }
-
-    // Cross conversion
+  // De otra → base
+  if (to === base_code) {
     const fromRate = rates[from];
-    const toRate = rates[to];
-
-    if (fromRate === undefined || toRate === undefined) {
-        return null;
+    const rate = fromRate ? 1 / fromRate : null;
+    if (rate != null) {
+      const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 6 });
+      console.log(`1 ${from} = ${fmt.format(rate)} ${to}`);
     }
+    return rate;
+  }
 
-    return toRate / fromRate;
+  // Cruce
+  const fromRate = rates[from];
+  const toRate = rates[to];
+  if (fromRate === undefined || toRate === undefined) {
+    return null;
+  }
+
+  const rate = toRate / fromRate;
+  const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 6 });
+  console.log(`1 ${from} = ${fmt.format(rate)} ${to}`);
+  return rate;
 };
 
 export { getLatestRates, initRates, startPolling, getRateByCurrency, getRateBetweenCurrencies };
