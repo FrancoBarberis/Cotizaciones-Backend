@@ -31,7 +31,7 @@ io.on('connection', (socket) => {
   socket.emit('rates:update', getLatestRates());
 });
 
-initRates(io); // inicializa el cache con valores por defecto
+initRates(io);
 startPolling(); // comienza a hacer fetch cada X segundos y emitir a todos los clientes
 
 servidorHTTP.listen(PORT, () => {
