@@ -8,9 +8,9 @@ import express, { Request, Response, NextFunction } from "express"; // HTTP serv
 import http from "http"; // Required by Socket.IO to bind to the HTTP server
 import cors from "cors"; // CORS configuration
 import { Server as SocketIOServer } from "socket.io"; // Socket.IO server
-import { ratesRouter } from "./routes/rates.routes";
-import { getLatestRates } from "./rates.service";
-import { CORS_ORIGIN, PORT } from "./helpers/config";
+import { ratesRouter } from "./routes/rates.routes.js";
+import { getLatestRates } from "./rates.service.js";
+import { CORS_ORIGIN, PORT } from "./helpers/config.js";
 
 // 2) Create Express app
 

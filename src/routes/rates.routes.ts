@@ -2,7 +2,7 @@
 // Exposes API endpoints and calls the functions from rates.service
 
 import { Router } from "express";
-import { getRateBetweenCurrencies, getLatestRates } from "../rates.service";
+import { getRateBetweenCurrencies, getLatestRates } from "../rates.service.js";
 
 export const ratesRouter = Router();
 

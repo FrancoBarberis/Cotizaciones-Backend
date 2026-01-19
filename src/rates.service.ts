@@ -2,8 +2,14 @@
 // Fetches exchange rates, caches them, and normalizes data
 
 import { Server as SocketIOServer } from "socket.io";
-import { ExchangeRateResponse, ProviderV6Response, ProviderV6ResponseSuccess } from "./helpers/types/exchange-rate.types";
-import { POLL_INTERVAL_MS, EXR_API_KEY, BASE_CURRENCY } from "./helpers/config";
+import type {
+  ExchangeRateResponse,
+  ProviderV6Response,
+  ProviderV6ResponseSuccess
+} from "./helpers/types/exchange-rate.types.js";
+import { POLL_INTERVAL_MS, EXR_API_KEY, BASE_CURRENCY } from "./helpers/config.js";
+
+
 
 // =================
 // CACHE UTILS
