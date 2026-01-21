@@ -2,7 +2,7 @@
 // Exposes API endpoints and calls the functions from rates.service
 
 import { Router } from "express";
-import { getRateBetweenCurrencies, getLatestRates } from "../rates.service.js";
+import { getRateBetweenCurrencies, getLatestRatesWithCacheMeta } from "../rates.service.js";
 
 export const ratesRouter = Router();
 
@@ -11,7 +11,7 @@ const isValidCurrency = (code: string) => /^[A-Z]{3}$/.test(code);
 // GET /api/rates
 ratesRouter.get("/", async (_req, res) => {
   try {
-    const data = await getLatestRates(); // async
+    const data = await getLatestRatesWithCacheMeta(); // async
     return res.status(200).json(data);
   } catch (error) {
     console.error("GET /api/rates failed:", error);

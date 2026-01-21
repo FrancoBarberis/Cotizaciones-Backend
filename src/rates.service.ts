@@ -1,5 +1,5 @@
+
 // src/rates.service.ts
-// Fetches exchange rates, caches them, and normalizes data
 
 import { Server as SocketIOServer } from "socket.io";
 import type {
@@ -9,22 +9,39 @@ import type {
 } from "./helpers/types/exchange-rate.types.js";
 import { POLL_INTERVAL_MS, EXR_API_KEY, BASE_CURRENCY } from "./helpers/config.js";
 
-
-
 // =================
 // CACHE UTILS
 // =================
 
 let cachedRates: ExchangeRateResponse | null = null;
-let cacheExpiresAt: number = 0;
+let cacheExpiresAt: number = 0; // ms epoch
+let asOfUnix: number = 0;       // seconds epoch (descarga local)
+
+// Usá el TTL desde tu config (POLL_INTERVAL_MS) y evitá re-leer process.env aquí
+const TTL_MS = Number(POLL_INTERVAL_MS ?? 1_000_000);
 
 const isCacheValid = (): boolean => {
-    return cachedRates !== null && Date.now() < cacheExpiresAt;
+  return cachedRates !== null && Date.now() < cacheExpiresAt;
 };
 
+/**
+ * Calcula el vencimiento real de la caché
+ * - por TTL local (as_of + TTL_MS)
+ * - y por el próximo update del proveedor (time_next_update_unix)
+ */
+function computeExpireMs(asOfUnixLocal: number, providerNextUpdateUnix?: number): number {
+  const localExpireMs = (asOfUnixLocal * 1000) + TTL_MS;
+  if (providerNextUpdateUnix && Number.isFinite(providerNextUpdateUnix)) {
+    const providerExpireMs = providerNextUpdateUnix * 1000;
+    return Math.min(localExpireMs, providerExpireMs);
+  }
+  return localExpireMs;
+}
+
 const updateCache = (rates: ExchangeRateResponse): void => {
-    cachedRates = rates;
-    cacheExpiresAt = rates.time_next_update_unix * 1000;
+  cachedRates = rates;
+  asOfUnix = Math.floor(Date.now() / 1000); // hora de descarga en tu servidor
+  cacheExpiresAt = computeExpireMs(asOfUnix, rates.time_next_update_unix);
 };
 
 const fetchRatesFromProvider = async (): Promise<ExchangeRateResponse> => {
@@ -34,7 +51,7 @@ const fetchRatesFromProvider = async (): Promise<ExchangeRateResponse> => {
   try {
     const resp = await fetch(
       `https://v6.exchangerate-api.com/v6/${EXR_API_KEY}/latest/${BASE_CURRENCY}`,
-      { signal: controller.signal } 
+      { signal: controller.signal }
     );
 
     if (!resp.ok) {
@@ -72,89 +89,61 @@ const fetchRatesFromProvider = async (): Promise<ExchangeRateResponse> => {
     }
     throw err;
   } finally {
-    clearTimeout(timeout); // ← importante
+    clearTimeout(timeout);
   }
 };
-
 
 // =================
 // SERVICES
 // =================
 
 /**
- * Retrieves the latest available exchange rates.
- *
- * - Uses cache if it is still valid
- * - If the cache has expired, fetches fresh data from the provider
- * - Returns normalized exchange rate data
- *
- * @returns {Promise<ExchangeRateResponse>} Current exchange rates snapshot
+ * Devuelve el snapshot actual (usando caché si es válida).
  */
 const getLatestRates = async (): Promise<ExchangeRateResponse> => {
-    if (isCacheValid()) {
-        return cachedRates!;
-    }
-
-    const freshRates: ExchangeRateResponse = await fetchRatesFromProvider();
-    updateCache(freshRates);
-
-    return freshRates;
+  if (isCacheValid()) {
+    return cachedRates!;
+  }
+  const freshRates: ExchangeRateResponse = await fetchRatesFromProvider();
+  updateCache(freshRates);
+  return freshRates;
 };
 
 /**
- * Emits the initial exchange rates state when the server starts.
- *
- * - Retrieves the current rates snapshot using the service layer
- * - Emits the data to all currently connected Socket.IO clients
- * - Intended to run once during server startup
- *
- * @param {Socket} io Socket.IO server instance
- * @returns {Promise<void>} Does not return any value
+ * Igual que getLatestRates, pero con metadatos de caché para el front.
  */
+const getLatestRatesWithCacheMeta = async (): Promise<
+  ExchangeRateResponse & { as_of_unix: number; cache_ttl_ms: number; expires_unix: number }
+> => {
+  const snap = await getLatestRates();
+  return {
+    ...snap,
+    as_of_unix: asOfUnix,
+    cache_ttl_ms: TTL_MS,
+    expires_unix: Math.floor(cacheExpiresAt / 1000),
+  };
+};
+
 const initRates = async (io: SocketIOServer): Promise<void> => {
-    const rates = await getLatestRates();
-    io.emit("rates:init", rates);
+  const rates = await getLatestRates();
+  io.emit("rates:init", rates);
 };
-
-/**
- * Starts the periodic polling cycle to refresh exchange rates.
- *
- * - Fetches rates from the external provider at a fixed interval
- * - Updates the internal cache with the new snapshot
- *
- * @returns {void}
- */
 
 const startPolling = (): void => {
-    setInterval(async () => {
-        try {
-            const freshRates = await fetchRatesFromProvider();
-            updateCache(freshRates);
-        } catch (error) {
-            console.error("[Rates Polling] Failed to refresh rates", error);
-        }
-    }, POLL_INTERVAL_MS)
+  setInterval(async () => {
+    try {
+      const freshRates = await fetchRatesFromProvider();
+      updateCache(freshRates);
+    } catch (error) {
+      console.error("[Rates Polling] Failed to refresh rates", error);
+    }
+  }, Number(POLL_INTERVAL_MS));
 };
 
-/**
- * Returns the current exchange rate for a specific currency
- * 
- * @param   {string} currency Currency code (e.g. "USD", "EUR")
- * @returns {number | null} Exchante rate value or null if not available
- */
 const getRateByCurrency = (currency: string): number | null => {
-    if (!cachedRates) return null;
-    return cachedRates.rates[currency] ?? null;
+  if (!cachedRates) return null;
+  return cachedRates.rates[currency] ?? null;
 };
-
-/**
- * Returns the exchange rate between two currencies
- * derived from the cached base currency.
- *
- * @param from Currency to convert from (e.g. "EUR")
- * @param to   Currency to convert to   (e.g. "ARS")
- * @returns number | null
- */
 
 const getRateBetweenCurrencies = (
   from: string,
@@ -164,46 +153,28 @@ const getRateBetweenCurrencies = (
 
   const { base_code, rates } = cachedRates;
 
-  // Misma moneda
   if (from === to) {
-    const rate = 1;
-    const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 6 });
-    console.log(`1 ${from} = ${fmt.format(rate)} ${to}`);
-    return rate;
+    return 1;
   }
-
-  // De base → otra
   if (from === base_code) {
-    const rate = rates[to] ?? null;
-    if (rate != null) {
-      const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 6 });
-      console.log(`1 ${from} = ${fmt.format(rate)} ${to}`);
-    }
-    return rate;
+    return rates[to] ?? null;
   }
-
-  // De otra → base
   if (to === base_code) {
     const fromRate = rates[from];
-    const rate = fromRate ? 1 / fromRate : null;
-    if (rate != null) {
-      const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 6 });
-      console.log(`1 ${from} = ${fmt.format(rate)} ${to}`);
-    }
-    return rate;
+    return fromRate ? 1 / fromRate : null;
   }
 
-  // Cruce
   const fromRate = rates[from];
   const toRate = rates[to];
-  if (fromRate === undefined || toRate === undefined) {
-    return null;
-  }
-
-  const rate = toRate / fromRate;
-  const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 6 });
-  console.log(`1 ${from} = ${fmt.format(rate)} ${to}`);
-  return rate;
+  if (fromRate === undefined || toRate === undefined) return null;
+  return toRate / fromRate;
 };
 
-export { getLatestRates, initRates, startPolling, getRateByCurrency, getRateBetweenCurrencies };
+export {
+  getLatestRates,
+  getLatestRatesWithCacheMeta,
+  initRates,
+  startPolling,
+  getRateByCurrency,
+  getRateBetweenCurrencies
+};

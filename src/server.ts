@@ -50,7 +50,7 @@ io.on("connection", (socket) => {
 // Start server
 
 httpServer.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server running on ${PORT}`);
 });
 
 // Health check endpoint (used by deployment platforms)
