@@ -1,8 +1,12 @@
+
 // src/routes/rates.routes.ts
 // Exposes API endpoints and calls the functions from rates.service
 
 import { Router } from "express";
-import { getRateBetweenCurrencies, getLatestRatesWithCacheMeta } from "../rates.service.js";
+import {
+  getRateBetweenCurrencies,
+  getLatestRatesWithCacheMeta, // <- usamos este en ambos endpoints
+} from "../rates.service.js";
 
 export const ratesRouter = Router();
 
@@ -42,20 +46,25 @@ ratesRouter.get("/convert", async (req, res) => {
         .json({ error: "Invalid 'amount' (must be a non-negative number)" });
     }
 
-    // 3) Current snapshot (may throw if provider not ready)
-    const snapshot = await getLatestRates();
-
-    // Ensure snapshot exists before using it below
-    if (!snapshot) {
-      return res.status(503).json({ error: "Rates not ready" });
-    }
+    // 3) Current snapshot WITH cache metadata
+    const snapshot = await getLatestRatesWithCacheMeta();
 
     // Short-circuit: same currency
     if (from === to) {
       return res.status(200).json({
-        from, to, amount, rate: 1, converted: amount,
+        from,
+        to,
+        amount,
+        rate: 1,
+        converted: amount,
         base: snapshot.base_code,
-        asOf: snapshot.time_last_update_unix * 1000,
+        // Metadatos de caché (segundos)
+        as_of_unix: snapshot.as_of_unix,
+        cache_ttl_ms: snapshot.cache_ttl_ms,
+        expires_unix: snapshot.expires_unix,
+        // Info del proveedor (opcional, útil para UI/depuración)
+        provider_time_last_update_unix: snapshot.time_last_update_unix,
+        provider_time_next_update_unix: snapshot.time_next_update_unix,
       });
     }
 
@@ -70,7 +79,7 @@ ratesRouter.get("/convert", async (req, res) => {
     // 5) Compute
     const converted = amount * rate;
 
-    // 6) Response with useful metadata
+    // 6) Response with cache + provider metadata
     return res.status(200).json({
       from,
       to,
@@ -78,11 +87,16 @@ ratesRouter.get("/convert", async (req, res) => {
       rate,
       converted,
       base: snapshot.base_code,
-      asOf: snapshot.time_last_update_unix * 1000, // ms epoch
+      // Metadatos de caché
+      as_of_unix: snapshot.as_of_unix,
+      cache_ttl_ms: snapshot.cache_ttl_ms,
+      expires_unix: snapshot.expires_unix,
+      // Metadatos del proveedor (UTC)
+      provider_time_last_update_unix: snapshot.time_last_update_unix,
+      provider_time_next_update_unix: snapshot.time_next_update_unix,
     });
   } catch (err) {
     console.error("GET /api/rates/convert error:", err);
-    // While provider/service errors are not typed, 503 is reasonable for "not ready"
     return res.status(503).json({ error: "Rates not ready" });
   }
 });
