@@ -100,7 +100,7 @@ const fetchRatesFromProvider = async (): Promise<ExchangeRateResponse> => {
 /**
  * Devuelve el snapshot actual (usando caché si es válida).
  */
-const getLatestRates = async (): Promise<ExchangeRateResponse> => {
+export const getLatestRates = async (): Promise<ExchangeRateResponse> => {
   if (isCacheValid()) {
     return cachedRates!;
   }
@@ -210,3 +210,33 @@ export const startSmartPolling = (io: SocketIOServer): void => {
   })();
 };
 
+/**
+ * Obtiene el rate directo de una moneda respecto a la base actual.
+ */
+export const getRateByCurrency = (currency: string): number | null => {
+  if (!cachedRates) return null;
+  return cachedRates.rates[currency] ?? null;
+};
+
+/**
+ * Obtiene el rate entre dos monedas, considerando la base (cross-rate si hace falta).
+ */
+export const getRateBetweenCurrencies = (from: string, to: string): number | null => {
+  if (!cachedRates) return null;
+
+  const { base_code, rates } = cachedRates;
+
+  if (from === to) return 1;
+
+  if (from === base_code) return rates[to] ?? null;
+
+  if (to === base_code) {
+    const fromRate = rates[from];
+    return fromRate ? 1 / fromRate : null;
+    }
+
+  const fromRate = rates[from];
+  const toRate = rates[to];
+  if (fromRate === undefined || toRate === undefined) return null;
+  return toRate / fromRate;
+};
