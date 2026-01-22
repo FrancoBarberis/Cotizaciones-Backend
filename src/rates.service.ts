@@ -30,7 +30,7 @@ const isCacheValid = (): boolean => {
  * - y por el próximo update del proveedor (time_next_update_unix)
  */
 function computeExpireMs(asOfUnixLocal: number, providerNextUpdateUnix?: number): number {
-  const localExpireMs = (asOfUnixLocal * 1000) + TTL_MS;
+  const localExpireMs = asOfUnixLocal * 1000 + TTL_MS;
   if (providerNextUpdateUnix && Number.isFinite(providerNextUpdateUnix)) {
     const providerExpireMs = providerNextUpdateUnix * 1000;
     return Math.min(localExpireMs, providerExpireMs);
@@ -112,7 +112,7 @@ const getLatestRates = async (): Promise<ExchangeRateResponse> => {
 /**
  * Igual que getLatestRates, pero con metadatos de caché para el front.
  */
-const getLatestRatesWithCacheMeta = async (): Promise<
+export const getLatestRatesWithCacheMeta = async (): Promise<
   ExchangeRateResponse & { as_of_unix: number; cache_ttl_ms: number; expires_unix: number }
 > => {
   const snap = await getLatestRates();
@@ -124,57 +124,89 @@ const getLatestRatesWithCacheMeta = async (): Promise<
   };
 };
 
-const initRates = async (io: SocketIOServer): Promise<void> => {
-  const rates = await getLatestRates();
+/**
+ * Construye snapshot + meta desde el estado actual (sin volver a pedir).
+ */
+function buildSnapshotWithMeta(): ExchangeRateResponse & {
+  as_of_unix: number;
+  cache_ttl_ms: number;
+  expires_unix: number;
+} {
+  if (!cachedRates) {
+    throw new Error("Cache is empty");
+  }
+  return {
+    ...cachedRates,
+    as_of_unix: asOfUnix,
+    cache_ttl_ms: TTL_MS,
+    expires_unix: Math.floor(cacheExpiresAt / 1000),
+  };
+}
+
+export const initRates = async (io: SocketIOServer): Promise<void> => {
+  const rates = await getLatestRatesWithCacheMeta();
+  // Primer broadcast al arrancar
   io.emit("rates:init", rates);
+  // Compatibilidad/consumo directo desde el front
+  io.emit("rates:data", rates);
 };
 
-const startPolling = (): void => {
-  setInterval(async () => {
+/**
+ * Scheduler inteligente: refresca cuando vence la caché y emite a todos.
+ * - Calcula el delay hasta `cacheExpiresAt`
+ * - Si el provider falla, reintenta con backoff suave
+ */
+export const startSmartPolling = (io: SocketIOServer): void => {
+  let timer: NodeJS.Timeout | null = null;
+  let inFlight = false;
+
+  const scheduleNext = (ms: number) => {
+    if (timer) clearTimeout(timer);
+    const delay = Math.max(1000, ms); // al menos 1s
+    timer = setTimeout(tick, delay);
+  };
+
+  const tick = async () => {
+    if (inFlight) return;
+    inFlight = true;
     try {
-      const freshRates = await fetchRatesFromProvider();
-      updateCache(freshRates);
+      // Si la caché sigue válida, dormimos hasta su vencimiento
+      if (isCacheValid()) {
+        const msLeft = cacheExpiresAt - Date.now();
+        scheduleNext(msLeft);
+        return;
+      }
+
+      // Refrescar del provider
+      const fresh = await fetchRatesFromProvider();
+      updateCache(fresh);
+
+      // Emitir snapshot con meta a todos los clientes
+      const snapshot = buildSnapshotWithMeta();
+      io.emit("rates:data", snapshot);
+
+      // Agendar próximo refresh al vencimiento
+      const msLeft = cacheExpiresAt - Date.now();
+      scheduleNext(msLeft);
     } catch (error) {
-      console.error("[Rates Polling] Failed to refresh rates", error);
+      console.error("[Rates SmartPolling] Failed to refresh rates", error);
+      // Backoff: reintentar en 15s si falló el provider
+      scheduleNext(15_000);
+    } finally {
+      inFlight = false;
     }
-  }, Number(POLL_INTERVAL_MS));
+  };
+
+  // Arranque: asegurar que haya caché y programar el próximo refresh
+  (async () => {
+    try {
+      await getLatestRates(); // inicializa la caché si estaba vacía
+      const msLeft = cacheExpiresAt - Date.now();
+      scheduleNext(msLeft);
+    } catch (e) {
+      console.error("[Rates SmartPolling] init failed", e);
+      scheduleNext(5_000);
+    }
+  })();
 };
 
-const getRateByCurrency = (currency: string): number | null => {
-  if (!cachedRates) return null;
-  return cachedRates.rates[currency] ?? null;
-};
-
-const getRateBetweenCurrencies = (
-  from: string,
-  to: string
-): number | null => {
-  if (!cachedRates) return null;
-
-  const { base_code, rates } = cachedRates;
-
-  if (from === to) {
-    return 1;
-  }
-  if (from === base_code) {
-    return rates[to] ?? null;
-  }
-  if (to === base_code) {
-    const fromRate = rates[from];
-    return fromRate ? 1 / fromRate : null;
-  }
-
-  const fromRate = rates[from];
-  const toRate = rates[to];
-  if (fromRate === undefined || toRate === undefined) return null;
-  return toRate / fromRate;
-};
-
-export {
-  getLatestRates,
-  getLatestRatesWithCacheMeta,
-  initRates,
-  startPolling,
-  getRateByCurrency,
-  getRateBetweenCurrencies
-};

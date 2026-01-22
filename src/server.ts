@@ -1,5 +1,5 @@
 
-// src/index.ts
+// src/server.ts
 // HTTP server + Socket.IO bootstrap
 // 1) Import dependencies
 
@@ -9,7 +9,11 @@ import http from "http"; // Required by Socket.IO to bind to the HTTP server
 import cors from "cors"; // CORS configuration
 import { Server as SocketIOServer } from "socket.io"; // Socket.IO server
 import { ratesRouter } from "./routes/rates.routes.js";
-import { getLatestRates } from "./rates.service.js";
+import {
+  getLatestRatesWithCacheMeta,
+  initRates,
+  startSmartPolling,
+} from "./rates.service.js";
 import { CORS_ORIGIN, PORT } from "./helpers/config.js";
 
 // 2) Create Express app
@@ -39,8 +43,9 @@ io.on("connection", (socket) => {
     lastRequest = Date.now();
 
     try {
-      const rates = await getLatestRates();
-      socket.emit("rates:data", rates);
+      // ⬇️ Enviamos snapshot con metadatos (incluye as_of_unix y expires_unix)
+      const snapshot = await getLatestRatesWithCacheMeta();
+      socket.emit("rates:data", snapshot);
     } catch (error) {
       socket.emit("rates:error", "Failed to load rates");
     }
@@ -51,6 +56,16 @@ io.on("connection", (socket) => {
 
 httpServer.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
+
+  // Emitir primer snapshot y arrancar scheduler por vencimiento de caché
+  (async () => {
+    try {
+      await initRates(io);       // emite rates:init y rates:data al inicio
+    } catch (e) {
+      console.error("[initRates] failed:", e);
+    }
+    startSmartPolling(io);       // emitirá rates:data automáticamente en cada refresh
+  })();
 });
 
 // Health check endpoint (used by deployment platforms)
